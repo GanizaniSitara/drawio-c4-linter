@@ -1,0 +1,15 @@
+<mxfile host="Electron" modified="2024-05-11T21:07:47.247Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/21.7.5 Chrome/114.0.5735.289 Electron/25.8.1 Safari/537.36" etag="6W0NCljQZXxPQYxYuRCb" version="21.7.5" type="device">
+  <diagram name="Page-1" id="CCE6s4OFxTfZHVdHNNSv">
+    <mxGraphModel dx="1418" dy="948" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <object label="With Properties" Property1="Test" id="lvlDorcLZH3-U9y09GGk-1">
+          <mxCell style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+            <mxGeometry x="360" y="240" width="150" height="75" as="geometry" />
+          </mxCell>
+        </object>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
