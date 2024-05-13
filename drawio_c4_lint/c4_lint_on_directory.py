@@ -9,16 +9,16 @@ def lint_drawio_files(directory):
                 try:
                     lint = C4Lint(file_path)
                     print(lint)
-                    errors = lint.lint()
-                    if errors:
-                        print(f"Errors in {file_path}:")
-                        for error in errors:
-                            print(f"  {error}")
-                    else:
-                        print(f"No errors in {file_path}.")
+                    #errors = lint.lint()
+                    #if errors:
+                        #print(f"Errors in {file_path}:")
+                        #for error in errors:
+                        #    print(f"  {error}")
+                    #else:
+                    #    print(f"No errors in {file_path}.")
                 except Exception as e:
                     print(f"Failed to initialize C4Lint for {file_path}: {e}")
 
 if __name__ == "__main__":
-    directory_path = 'C:\\Solutions\\Python\\AllConcepts\\drawio_github'  # Update this path to your specific top level directory
+    directory_path = 'C:\\Solutions\\Python\\drawio_c4_lint\\c4_github_examples'  # Update this path to your specific top level directory
     lint_drawio_files(directory_path)
