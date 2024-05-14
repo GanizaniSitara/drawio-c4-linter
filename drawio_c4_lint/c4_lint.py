@@ -1,8 +1,10 @@
+import os.path
 import xml.etree.ElementTree as ET
 import lxml.etree as etree
 import json
 import logging
 import re
+import drawio.drawio_serialization
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -21,10 +23,19 @@ class C4Lint:
         self.include_ids = include_ids
         self.root = self.parse_xml(xml_file)
 
+
     def parse_xml(self, xml_file):
         try:
             tree = etree.parse(xml_file)
             xml_data = tree.findall('.//diagram')[0]
+            if hasattr(xml_data, 'text'):
+                try:
+                    xml_string = drawio.drawio_serialization.decode_diagram(xml_data.text)
+                    return ET.fromstring(xml_string)
+                except Exception:
+                    pass
+            else:
+                xml_data = xml_data.find('.//mxGraphModel')
             xml_string = ET.tostring(xml_data, encoding='utf-8').decode('utf-8')
             return ET.fromstring(xml_string)
         except Exception as e:
@@ -115,8 +126,9 @@ class C4Lint:
         return json.dumps({"elements": elements, "relationships": relationships}, indent=2)
 
     def check_filename_format(self):
-        filename_pattern = r"C4 L\d+ [\w\s]+\.drawio"
-        if not re.match(filename_pattern, self.xml_file):
+        file = os.path.basename(self.xmls_file)
+        filename_pattern = r"C4 L[01234] [\w\s]+\.drawio"
+        if not re.match(filename_pattern, file):
             self.errors['Other'].append(f"ERROR: Filename '{self.xml_file}' does not match expected format 'C4 L<x> <system name>.drawio'")
 
     def __str__(self):
