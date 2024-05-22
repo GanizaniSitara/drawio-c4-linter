@@ -4,7 +4,11 @@ import lxml.etree as etree
 import json
 import logging
 import re
+import os
 import drawio.drawio_serialization
+
+
+#TODO need to distinguish objects and other mxGraph cell elements in the XML and include them as a 3rd count in the summary
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -22,15 +26,15 @@ class C4Lint:
         self.include_structurizr = include_structurizr
         self.include_ids = include_ids
         self.root = self.parse_xml(xml_file)
-
+        self.linted = False
 
     def parse_xml(self, xml_file):
         try:
             tree = etree.parse(xml_file)
             xml_data = tree.findall('.//diagram')[0]
-            if hasattr(xml_data, 'text'):
+            if hasattr(xml_data, 'text') and not xml_data.text.isspace():
                 try:
-                    xml_string = drawio.drawio_serialization.decode_diagram(xml_data.text)
+                    xml_string = drawio.drawio_serialization.decode_diagram_data(xml_data.text)
                     return ET.fromstring(xml_string)
                 except Exception:
                     pass
@@ -98,10 +102,20 @@ class C4Lint:
                 return True
         return False
 
+    def has_errors(self):
+        if not self.linted:
+            self.lint()
+        return any(self.errors.values())
+
+    @property
+    def error_count(self):
+        return sum(len(errors) for errors in self.errors.values())
+
     def lint(self):
         self.check_c4_objects()
         self.check_all_systems_connected()
         self.check_filename_format()
+        self.linted = True
         return self.errors
 
     def to_structurizr(self):
@@ -126,8 +140,8 @@ class C4Lint:
         return json.dumps({"elements": elements, "relationships": relationships}, indent=2)
 
     def check_filename_format(self):
-        file = os.path.basename(self.xmls_file)
-        filename_pattern = r"C4 L[01234] [\w\s]+\.drawio"
+        file = os.path.basename(self.xml_file)
+        filename_pattern = r"C4 L[01234] .*?.drawio"
         if not re.match(filename_pattern, file):
             self.errors['Other'].append(f"ERROR: Filename '{self.xml_file}' does not match expected format 'C4 L<x> <system name>.drawio'")
 
