@@ -20,6 +20,7 @@ class XMLParseException(Exception):
 class C4Lint:
     def __init__(self, xml_file, include_structurizr=False, include_ids=False):
         self.errors = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
+        self.objects = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
         self.c4_object_count = 0
         self.non_c4_object_count = 0
         self.xml_file = xml_file
@@ -27,6 +28,13 @@ class C4Lint:
         self.include_ids = include_ids
         self.root = self.parse_xml(xml_file)
         self.linted = False
+
+    def find_parent(self, element, tree):
+        for parent in tree.iter():
+            for child in parent:
+                if child is element:
+                    return parent
+        return None
 
     def parse_xml(self, xml_file):
         try:
@@ -69,15 +77,34 @@ class C4Lint:
                 self.check_required_attributes(elem, {'c4Description', 'c4Technology'}, category='Relationships', is_relationship=True)
             elif 'c4Type' in elem_attribs:
                 self.c4_object_count += 1
+                # ToDo this looks like flimsy logic. Need to refactor. Both and add the type lookup by colour
                 category = 'Systems' if c4_type == 'Software System' else 'Actors'
+                # parent = self.find_parent(elem, self.root)
+                # self.objects['Systems'].append(self.parse_fill_color(parent.attrib.get('style', '')))
+
                 self.check_required_attributes(elem, {'c4Name', 'c4Description', 'c4Type'}, category=category)
             else:
                 if elem_attribs.isdisjoint(required_attribs):
                     self.non_c4_object_count += 1
                     self.errors['Other'].append(f"ERROR: Non-C4 element found. Label: {elem.attrib.get('label', 'No label')}")
 
+
+
         if not objects_found:
             self.errors['Other'].append("ERROR: No elements of type Object found.")
+
+    def parse_fill_color(style):
+        parts = style.split(';')
+        color_dict = {p.split('=')[0]: p.split('=')[1] for p in parts if '=' in p}
+        fillColor = color_dict.get('fillColor', '#FFFFFF')  # Default to white if no color specified
+        if fillColor == '#1061B0':
+            return 'Internal'
+        elif fillColor == '#8C8496':
+            return 'External'
+        elif fillColor == '#23A2D9':
+            return 'Component'
+        else:
+            return 'Other'
 
     def check_required_attributes(self, elem, required_attribs, category, is_relationship=False):
         missing_attribs = [attrib for attrib in required_attribs if not elem.attrib.get(attrib, '').strip()]
@@ -145,6 +172,7 @@ class C4Lint:
         if not re.match(filename_pattern, file):
             self.errors['Other'].append(f"ERROR: Filename '{self.xml_file}' does not match expected format 'C4 L<x> <system name>.drawio'")
 
+
     def __str__(self):
         def format_errors():
             error_messages = ''
@@ -154,22 +182,30 @@ class C4Lint:
                         f"  {error}" for error in self.errors[category])
             return error_messages
 
-        output = f"{60*'#'}\n"
-        output += f"C4 Linter Input: {self.xml_file}\n"
-        output += f"Include IDs in errors: {'Enabled' if self.include_ids else 'Disabled'}"
+        def summary():
+            return (f"  Summary: {self.c4_object_count} C4 objects, "
+                    f"{self.non_c4_object_count} non-C4 objects found.\n")
 
-        if not any(self.errors.values()):
-            if self.is_c4():
-                self.lint()
-                if any(self.errors.values()):
-                    error_messages = format_errors()
-                    structurizr_output = self.to_structurizr() if self.include_structurizr else "Disabled"
-                    return f"{output}{error_messages}\n\n  === Summary === \n  {self.c4_object_count} C4 objects, {self.non_c4_object_count} non-C4 objects found.\n\n  === Structurizr Output ===\n  {structurizr_output}\n"
-                else:
-                    structurizr_output = self.to_structurizr() if self.include_structurizr else "Disabled"
-                    return f"{output}  No linting issues detected.\n  Summary: {self.c4_object_count} C4 objects, {self.non_c4_object_count} non-C4 objects found.\n\n  === Structurizr Output ===\n  {structurizr_output}\n"
-            else:
-                return f"{output}  No C4 objects found. No linting performed.\n"
-        else:
+        def structurizr_output():
+            return self.to_structurizr() if self.include_structurizr else "Disabled"
+
+        output = (f"{60 * '#'}\n"
+                  f"C4 Linter Input: {self.xml_file}\n"
+                  f"Include IDs in errors: {'Enabled' if self.include_ids else 'Disabled'}")
+
+        if not self.linted:
+            self.lint()
+
+        if not self.is_c4():
+            return f"{output}  No C4 objects found. No linting performed.\n"
+
+        if any(self.errors.values()):
             error_messages = format_errors()
-            return f"{output}{error_messages}\n"
+            return (f"{output}{error_messages}\n\n  === Summary === \n"
+                    f"{summary()}\n\n  === Structurizr Output ===\n  {structurizr_output()}\n")
+        else:
+            return (f"{output}  No linting issues detected.\n{summary()}"
+                f"\n\n  === Structurizr Output ===\n  {structurizr_output()}\n")
+
+
+
