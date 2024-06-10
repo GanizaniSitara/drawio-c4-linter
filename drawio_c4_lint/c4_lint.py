@@ -6,6 +6,8 @@ import logging
 import re
 import os
 import drawio.drawio_serialization
+import pandas as pd
+import difflib
 
 
 #TODO need to distinguish objects and other mxGraph cell elements in the XML and include them as a 3rd count in the summary
@@ -28,6 +30,24 @@ class C4Lint:
         self.include_ids = include_ids
         self.root = self.parse_xml(xml_file)
         self.linted = False
+        self.load_known_strings = self.load_known_strings('applications.csv')
+
+    def load_known_strings(self, csv_path):
+        df = pd.read_csv(csv_path)
+        known_strings = df['Business Application Name'].dropna().tolist()
+        return known_strings
+
+    def match_strings(self, input_string, known_strings):
+        input_string_lower = input_string.lower()
+        known_strings_lower = [s.lower() for s in known_strings]
+
+        # Exact match
+        if input_string_lower in known_strings_lower:
+            return [input_string]
+
+        # Fuzzy match
+        matches = difflib.get_close_matches(input_string_lower, known_strings_lower, n=3, cutoff=0.0)
+        return matches
 
     def find_parent(self, element, tree):
         for parent in tree.iter():
@@ -40,6 +60,8 @@ class C4Lint:
         try:
             tree = etree.parse(xml_file)
             xml_data = tree.findall('.//diagram')[0]
+            # sometimes the "plain xml" files create with drawio desktop will still have the text
+            # attribute in them with '\n ' as content so we need to check for that as well
             if hasattr(xml_data, 'text') and not xml_data.text.isspace():
                 try:
                     xml_string = drawio.drawio_serialization.decode_diagram_data(xml_data.text)
@@ -78,9 +100,21 @@ class C4Lint:
             elif 'c4Type' in elem_attribs:
                 self.c4_object_count += 1
                 # ToDo this looks like flimsy logic. Need to refactor. Both and add the type lookup by colour
-                category = 'Systems' if c4_type == 'Software System' else 'Actors'
                 # parent = self.find_parent(elem, self.root)
                 # self.objects['Systems'].append(self.parse_fill_color(parent.attrib.get('style', '')))
+                if c4_type == 'Software System':
+                    category = 'Systems'
+                    system_name = elem.attrib.get('c4Name', '').strip()
+                    matches = self.match_strings(system_name, self.load_known_strings)
+                    if not matches:
+                        self.errors['Systems'].append(f"ERROR: '{system_name}' not found in known strings")
+                    if not system_name in matches:
+                        self.errors['Systems'].append(f"WARN: '{system_name}' not found in known strings. Suggestions {matches}")
+                elif c4_type == 'Person':
+                    category = 'Actors'
+                else:
+                    category = 'Other'
+
 
                 self.check_required_attributes(elem, {'c4Name', 'c4Description', 'c4Type'}, category=category)
             else:
