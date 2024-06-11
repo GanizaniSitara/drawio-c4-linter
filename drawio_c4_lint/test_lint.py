@@ -20,7 +20,7 @@ class TestC4Lint(unittest.TestCase):
         lint = C4Lint(os.path.join('test_files', 'missing_type.drawio'))
         errors = lint.lint()
         expected_error = "ERROR: 'c4Type' property missing ---  c4Name: System Name, c4Description: Description"
-        self.assertIn(expected_error, errors['Actors'])
+        self.assertIn(expected_error, errors['Other'])
 
     def test_missing_technology_on_relationship(self):
         lint = C4Lint(os.path.join('test_files', 'missing_technology_on_relationship.drawio'))
@@ -57,8 +57,8 @@ class TestC4Lint(unittest.TestCase):
     def test_missing_connection(self):
         lint = C4Lint(os.path.join('test_files', 'missing_connection.drawio'))
         errors = lint.lint()
-        expected_error_1 = "ERROR: Software System (c4Type: Software System, id: esDkObLFpEDxHqnVwX9G-3) is not connected by any relationship."
-        expected_error_2 = "ERROR: Software System (c4Type: Software System, id: esDkObLFpEDxHqnVwX9G-4) is not connected by any relationship."
+        expected_error_1 = "ERROR: Software System (c4Name: System name C, c4Type: Software System, id esDkObLFpEDxHqnVwX9G-3) is not connected by any relationship."
+        expected_error_2 = "ERROR: Software System (c4Name: External system name D, c4Type: Software System, id esDkObLFpEDxHqnVwX9G-4) is not connected by any relationship."
         self.assertIn(expected_error_1, errors['Systems'])
         self.assertIn(expected_error_2, errors['Systems'])
         self.assertEqual(len(errors['Systems']), 2)

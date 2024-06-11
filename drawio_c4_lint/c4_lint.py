@@ -10,10 +10,19 @@ import pandas as pd
 import difflib
 
 
+
 #TODO need to distinguish objects and other mxGraph cell elements in the XML and include them as a 3rd count in the summary
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    handlers=[
+        logging.StreamHandler()
+    ],
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)-8s] %(name)s %(funcName)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
 logger = logging.getLogger(__name__)
 
 class XMLParseException(Exception):
@@ -21,7 +30,9 @@ class XMLParseException(Exception):
 
 class C4Lint:
     def __init__(self, xml_file, include_structurizr=False, include_ids=False):
+        logger.debug((f"Initializing C4Lint with xml_file: {xml_file}, "))
         self.errors = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
+        self.warnings = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
         self.objects = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
         self.c4_object_count = 0
         self.non_c4_object_count = 0
@@ -31,8 +42,10 @@ class C4Lint:
         self.root = self.parse_xml(xml_file)
         self.linted = False
         self.load_known_strings = self.load_known_strings('applications.csv')
+        self.lint()
 
     def load_known_strings(self, csv_path):
+        logger.debug(f"Loading known strings from {csv_path}")
         df = pd.read_csv(csv_path)
         known_strings = df['Business Application Name'].dropna().tolist()
         return known_strings
@@ -57,6 +70,7 @@ class C4Lint:
         return None
 
     def parse_xml(self, xml_file):
+        logger.debug(f"Parsing XML file: {xml_file}")
         try:
             tree = etree.parse(xml_file)
             xml_data = tree.findall('.//diagram')[0]
@@ -78,14 +92,36 @@ class C4Lint:
             raise XMLParseException(error_message)
 
     def check_all_systems_connected(self):
-        systems = {elem.get('id'): elem for elem in self.root.findall(".//object[@c4Type='Software System']")}
-        connections = {elem.get('source'): elem.get('target') for elem in self.root.findall(".//mxCell[@source][@target]")}
+        logger.debug("Checking all systems are connected")
+        systems = {elem.get('id'): elem for elem in self.root.findall(".//object[@c4Type!='Relationship']")}
 
-        for system_id in systems:
-            if system_id not in connections and system_id not in connections.values():
-                self.errors['Systems'].append(f"ERROR: Software System (c4Type: Software System, id: {system_id}) is not connected by any relationship.")
+        def find_connected_systems(self):
+            results = set()
+            objects = self.root.findall(".//object")
+            for obj in objects:
+                mxcell = obj.find(".//mxCell")
+                if mxcell is not None:
+                    if 'source' in mxcell.attrib or 'target' in mxcell.attrib:
+                        # at least one leg is connected
+                        if 'source' in mxcell.attrib and 'target' in mxcell.attrib:
+                            results.add(mxcell.attrib['source'])
+                            results.add(mxcell.attrib['target'])
+                        else:
+                            self.errors['Relationships'].append(
+                                # TODO - include a test case
+                                f"ERROR: {obj.attrib['c4Description']} -- one leg disconnected")
+
+            return results
+
+        systems_with_at_least_one_connection = find_connected_systems(self)
+
+        for system_id, system_details in systems.items():
+            if system_id not in systems_with_at_least_one_connection:
+                self.errors['Systems'].append(f"ERROR: Software System (c4Name: {system_details.attrib['c4Name']}, c4Type: {system_details.attrib['c4Type']}, id {system_id}) is not connected by any relationship.")
+
 
     def check_c4_objects(self):
+        logger.debug("Checking C4 objects")
         required_attribs = {'c4Name', 'c4Description', 'c4Type', 'c4Technology'}
         objects_found = False
 
@@ -105,11 +141,14 @@ class C4Lint:
                 if c4_type == 'Software System':
                     category = 'Systems'
                     system_name = elem.attrib.get('c4Name', '').strip()
+                    if not system_name:
+                        self.errors['Systems'].append(f"ERROR: 'c4Name' property missing ---  {self.get_readable_properties(elem)}")
+                        continue
                     matches = self.match_strings(system_name, self.load_known_strings)
                     if not matches:
                         self.errors['Systems'].append(f"ERROR: '{system_name}' not found in known strings")
                     if not system_name in matches:
-                        self.errors['Systems'].append(f"WARN: '{system_name}' not found in known strings. Suggestions {matches}")
+                        self.warnings['Systems'].append(f"WARN: '{system_name}' not found in known strings. Suggestions {matches}")
                 elif c4_type == 'Person':
                     category = 'Actors'
                 else:
@@ -121,9 +160,6 @@ class C4Lint:
                 if elem_attribs.isdisjoint(required_attribs):
                     self.non_c4_object_count += 1
                     self.errors['Other'].append(f"ERROR: Non-C4 element found. Label: {elem.attrib.get('label', 'No label')}")
-
-
-
         if not objects_found:
             self.errors['Other'].append("ERROR: No elements of type Object found.")
 
@@ -170,9 +206,14 @@ class C4Lint:
 
     @property
     def error_count(self):
+        if not self.linted:
+            raise RuntimeError("Use .lint() method first")
         return sum(len(errors) for errors in self.errors.values())
 
     def lint(self):
+        if self.linted:
+            return self.errors
+
         self.check_c4_objects()
         self.check_all_systems_connected()
         self.check_filename_format()
@@ -187,7 +228,7 @@ class C4Lint:
             if c4_type and c4_type != "Relationship":
                 elements.append({
                     "name": elem.attrib.get('c4Name'),
-                    "description": elem.attrib.get('c4Description').replace('\n', ' '),
+                    "description": elem.attrib.get('c4Description').replace('\n', ' ') if hasattr(elem, 'c4Description') else '',
                     "type": c4_type,
                     "technology": elem.attrib.get('c4Technology')
                 })
@@ -195,7 +236,7 @@ class C4Lint:
                 relationships.append({
                     "source": elem.attrib.get('source'),
                     "destination": elem.attrib.get('target'),
-                    "description": elem.attrib.get('c4Description').replace('\n', ' '),
+                    "description": elem.attrib.get('c4Description').replace('\n', ' ') if hasattr(elem, 'c4Description') else '',
                     "technology": elem.attrib.get('c4Technology')
                 })
         return json.dumps({"elements": elements, "relationships": relationships}, indent=2)
@@ -208,6 +249,8 @@ class C4Lint:
 
 
     def __str__(self):
+        if not self.linted:
+            return "Use .lint() on the object to perform linting."
         def format_errors():
             error_messages = ''
             for category in ['Systems', 'Actors', 'Relationships', 'Other']:
