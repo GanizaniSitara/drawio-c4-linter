@@ -29,7 +29,7 @@ class XMLParseException(Exception):
     pass
 
 class C4Lint:
-    def __init__(self, xml_file, output_text_description_file=False, include_ids=False, structurizr=False):
+    def __init__(self, xml_file, output_text_description_file=False, include_ids=False, structurizr=False, known_applications=[]):
         logger.debug((f"Initializing C4Lint with xml_file: {xml_file}, "))
         self.errors = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
         self.warnings = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
@@ -41,11 +41,11 @@ class C4Lint:
         self.include_ids = include_ids
         self.root = self.parse_xml(xml_file)
         self.linted = False
-        self.known_strings = self.load_known_strings('applications.csv')
+        self.known_applications = self.load_known_applications(known_applications) if known_applications else []
         self.structurizr_output = structurizr
         self.lint()
 
-    def load_known_strings(self, csv_path):
+    def load_known_applications(self, csv_path):
         logger.debug(f"Loading known strings from {csv_path}")
         df = pd.read_csv(csv_path)
         known_strings = df['Business Application Name'].dropna().tolist()
@@ -145,7 +145,7 @@ class C4Lint:
                     if not system_name:
                         self.errors['Systems'].append(f"ERROR: 'c4Name' property missing ---  {self.get_readable_properties(elem)}")
                         continue
-                    matches = self.match_strings(system_name, self.known_strings)
+                    matches = self.match_strings(system_name, self.known_applications)
                     if not matches:
                         self.errors['Systems'].append(f"ERROR: '{system_name}' not found in known strings")
                     if not system_name in matches:
