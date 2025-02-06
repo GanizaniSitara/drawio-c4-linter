@@ -42,7 +42,7 @@ class C4Lint:
         self.root = self.parse_xml(xml_file)
         self.linted = False
         self.known_applications = self.load_known_applications(known_applications) if known_applications else []
-        self.structurizr_output = structurizr
+        self.structurizr = structurizr
         self.lint()
 
     def load_known_applications(self, csv_path):
