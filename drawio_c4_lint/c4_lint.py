@@ -29,7 +29,7 @@ class XMLParseException(Exception):
     pass
 
 class C4Lint:
-    def __init__(self, xml_file, output_text_descrioption_file=False, include_ids=False):
+    def __init__(self, xml_file, output_text_description_file=False, include_ids=False):
         logger.debug((f"Initializing C4Lint with xml_file: {xml_file}, "))
         self.errors = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
         self.warnings = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
@@ -37,7 +37,7 @@ class C4Lint:
         self.c4_object_count = 0
         self.non_c4_object_count = 0
         self.xml_file = xml_file
-        self.include_structurizr = output_text_descrioption_file
+        self.output_text_description_file = output_text_description_file
         self.include_ids = include_ids
         self.root = self.parse_xml(xml_file)
         self.linted = False
