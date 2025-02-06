@@ -77,5 +77,22 @@ class TestC4Lint(unittest.TestCase):
             "Filename 'C4 L2 システム.drawio' does not match expected format 'C4 L<x> <system name>.drawio'",
             errors['Other'])
 
+
+def output_full_linter_results():
+    test_files_dir = 'test_files'
+    test_results_dir = 'test_results'
+    if not os.path.exists(test_results_dir):
+        os.makedirs(test_results_dir)
+    for filename in os.listdir(test_files_dir):
+        if filename.endswith('.drawio'):
+            file_path = os.path.join(test_files_dir, filename)
+            lint = C4Lint(file_path,structurizr=True)
+            result = str(lint)
+            output_file = os.path.join(test_results_dir, f"{os.path.splitext(filename)[0]}_results.txt")
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(result)
+
+output_full_linter_results()
+
 if __name__ == "__main__":
     unittest.main()

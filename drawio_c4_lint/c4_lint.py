@@ -29,7 +29,7 @@ class XMLParseException(Exception):
     pass
 
 class C4Lint:
-    def __init__(self, xml_file, output_text_description_file=False, include_ids=False):
+    def __init__(self, xml_file, output_text_description_file=False, include_ids=False, structurizr=False):
         logger.debug((f"Initializing C4Lint with xml_file: {xml_file}, "))
         self.errors = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
         self.warnings = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
@@ -42,6 +42,7 @@ class C4Lint:
         self.root = self.parse_xml(xml_file)
         self.linted = False
         self.known_strings = self.load_known_strings('applications.csv')
+        self.structurizr_output = structurizr
         self.lint()
 
     def load_known_strings(self, csv_path):
@@ -224,20 +225,21 @@ class C4Lint:
         elements = []
         relationships = []
         for elem in self.root.findall(".//object"):
-            c4_type = elem.attrib.get('c4Type', '').strip()
-            if c4_type and c4_type != "Relationship":
-                elements.append({
-                    "name": elem.attrib.get('c4Name'),
-                    "description": elem.attrib.get('c4Description').replace('\n', ' ') if hasattr(elem, 'c4Description') else '',
-                    "type": c4_type,
-                    "technology": elem.attrib.get('c4Technology')
-                })
-            elif c4_type == "Relationship":
+            c4_type = elem.attrib.get("c4Type", "").strip()
+            if c4_type == "Relationship":
                 relationships.append({
-                    "source": elem.attrib.get('source'),
-                    "destination": elem.attrib.get('target'),
-                    "description": elem.attrib.get('c4Description').replace('\n', ' ') if hasattr(elem, 'c4Description') else '',
-                    "technology": elem.attrib.get('c4Technology')
+                    "source": elem.attrib.get("source", ""),
+                    "target": elem.attrib.get("target", ""),
+                    "description": elem.attrib.get("c4Description", "").replace("\n", " "),
+                    "technology": elem.attrib.get("c4Technology", "")
+                })
+            else:
+                elements.append({
+                    "id": elem.attrib.get("id", ""),
+                    "name": elem.attrib.get("c4Name", ""),
+                    "description": elem.attrib.get("c4Description", "").replace("\n", " "),
+                    "type": c4_type,
+                    "technology": elem.attrib.get("c4Technology", "")
                 })
         return json.dumps({"elements": elements, "relationships": relationships}, indent=2)
 
@@ -259,12 +261,28 @@ class C4Lint:
                         f"  {error}" for error in self.errors[category])
             return error_messages
 
+        def format_warnings():
+            warning_messages = ''
+            for category in ['Systems', 'Actors', 'Relationships', 'Other']:
+                if self.errors[category]:
+                    warning_messages += f"\n\n  === {category} ===\n" + '\n'.join(
+                        f"  {warning}" for warning in self.warnings[category])
+            return warning_messages
+
+        def format_objects(objects):
+            object_messages = ''
+            for category in objects:
+                if self.errors[category] or self.warnings[category]:
+                    object_messages += f"\n\n  === {category} ===\n" + '\n'.join(
+                        f"  {object}" for o in self.objects[category])
+            return error_messages
+
         def summary():
             return (f"  Summary: {self.c4_object_count} C4 objects, "
                     f"{self.non_c4_object_count} non-C4 objects found.\n")
 
         def structurizr_output():
-            return self.to_structurizr() if self.include_structurizr else "Disabled"
+            return self.to_structurizr() if self.structurizr_output else "Disabled"
 
         output = (f"{60 * '#'}\n"
                   f"C4 Linter Input: {self.xml_file}\n"
@@ -277,10 +295,10 @@ class C4Lint:
             return f"{output}  No C4 objects found. No linting performed.\n"
 
         if any(self.errors.values()) or any(self.warnings.values()) or any(self.objects.values()):
-            error_messages = self.format_errors()
-            warning_messages = self.format_warnings()
-            systems = self.format_objects(['Systems'])
-            objects = self.format_objects(['Other'])
+            error_messages = format_errors()
+            warning_messages = format_warnings()
+            systems = format_objects(['Systems'])
+            objects = format_objects(['Other'])
             return (f"{output}{error_messages}\n\n  === Summary === \n"
                     f"{warning_messages}\n"
                     f"{systems}\n"
