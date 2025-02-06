@@ -29,7 +29,7 @@ class XMLParseException(Exception):
     pass
 
 class C4Lint:
-    def __init__(self, xml_file, include_structurizr=False, include_ids=False):
+    def __init__(self, xml_file, output_text_descrioption_file=False, include_ids=False):
         logger.debug((f"Initializing C4Lint with xml_file: {xml_file}, "))
         self.errors = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
         self.warnings = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
@@ -37,11 +37,11 @@ class C4Lint:
         self.c4_object_count = 0
         self.non_c4_object_count = 0
         self.xml_file = xml_file
-        self.include_structurizr = include_structurizr
+        self.include_structurizr = output_text_descrioption_file
         self.include_ids = include_ids
         self.root = self.parse_xml(xml_file)
         self.linted = False
-        self.load_known_strings = self.load_known_strings('applications.csv')
+        self.known_strings = self.load_known_strings('applications.csv')
         self.lint()
 
     def load_known_strings(self, csv_path):
@@ -144,7 +144,7 @@ class C4Lint:
                     if not system_name:
                         self.errors['Systems'].append(f"ERROR: 'c4Name' property missing ---  {self.get_readable_properties(elem)}")
                         continue
-                    matches = self.match_strings(system_name, self.load_known_strings)
+                    matches = self.match_strings(system_name, self.known_strings)
                     if not matches:
                         self.errors['Systems'].append(f"ERROR: '{system_name}' not found in known strings")
                     if not system_name in matches:
@@ -276,13 +276,19 @@ class C4Lint:
         if not self.is_c4():
             return f"{output}  No C4 objects found. No linting performed.\n"
 
-        if any(self.errors.values()):
-            error_messages = format_errors()
+        if any(self.errors.values()) or any(self.warnings.values()) or any(self.objects.values()):
+            error_messages = self.format_errors()
+            warning_messages = self.format_warnings()
+            systems = self.format_objects(['Systems'])
+            objects = self.format_objects(['Other'])
             return (f"{output}{error_messages}\n\n  === Summary === \n"
+                    f"{warning_messages}\n"
+                    f"{systems}\n"
+                    f"{objects}\n"
+                    f"\n\n === Summary ===\n"
                     f"{summary()}\n\n  === Structurizr Output ===\n  {structurizr_output()}\n")
         else:
-            return (f"{output}  No linting issues detected.\n{summary()}"
-                f"\n\n  === Structurizr Output ===\n  {structurizr_output()}\n")
+            return (f"{output}  No linting issues detected.\n{summary()}")
 
 
 
