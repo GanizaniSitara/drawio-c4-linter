@@ -282,7 +282,7 @@ class C4Lint:
                     f"{self.non_c4_object_count} non-C4 objects found.\n")
 
         def structurizr_output():
-            return self.to_structurizr() if self.structurizr_output else "Disabled"
+            return self.to_structurizr() if self.structurizr else "Disabled"
 
         output = (f"{60 * '#'}\n"
                   f"C4 Linter Input: {self.xml_file}\n"
