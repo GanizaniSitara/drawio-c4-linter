@@ -16,9 +16,17 @@ dependencies = [
 
 [project.optional-dependencies]
 analysis = ["networkx>=3.0", "matplotlib>=3.7"]
+dev = ["pytest>=8.0"]
 
 [project.scripts]
 c4lint = "drawio_c4_lint.cli:main"
 
 [tool.setuptools]
 packages = ["drawio_c4_lint", "drawio_c4_lint.drawio"]
+
+[tool.pytest.ini_options]
+# Point pytest at the package rather than letting it walk the repository. Collecting
+# from the root meant crawling c4_github_examples and test_results, which took
+# 21 seconds to find 26 tests.
+testpaths = ["drawio_c4_lint"]
+python_files = ["test_*.py"]
