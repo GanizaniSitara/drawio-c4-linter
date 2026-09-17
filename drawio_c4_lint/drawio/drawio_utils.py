@@ -1,7 +1,7 @@
 from lxml import etree
 import random
 import string
-from drawio_c4_analysis.drawio import drawio_serialization
+from drawio_c4_lint.drawio import drawio_serialization
 import xml.dom.minidom
 
 def id_generator(size=22, chars=string.ascii_uppercase + string.digits + string.ascii_lowercase + '-_'):

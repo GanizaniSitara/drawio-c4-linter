@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import os
-import drawio.drawio_serialization
+from drawio_c4_lint.drawio import drawio_serialization
 import pandas as pd
 import difflib
 
@@ -79,7 +79,7 @@ class C4Lint:
             # attribute in them with '\n ' as content so we need to check for that as well
             if hasattr(xml_data, 'text') and not xml_data.text.isspace():
                 try:
-                    xml_string = drawio.drawio_serialization.decode_diagram_data(xml_data.text)
+                    xml_string = drawio_serialization.decode_diagram_data(xml_data.text)
                     return ET.fromstring(xml_string)
                 except Exception:
                     pass

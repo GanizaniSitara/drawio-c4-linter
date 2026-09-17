@@ -1,4 +1,5 @@
 import os
+import sys
 from drawio_c4_lint.c4_lint import C4Lint
 
 def lint_drawio_files(directory):
@@ -14,5 +15,8 @@ def lint_drawio_files(directory):
                     print(f"Failed to initialize C4Lint for {file_path}: {e}")
 
 if __name__ == "__main__":
-    directory_path = 'C:\\Solutions\\Python\\drawio_c4_lint\\c4_github_examples'  # Update this path to your specific top level directory
-    lint_drawio_files(directory_path)
+    # diagram names are often non-ASCII; do not die on a legacy console codepage
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if len(sys.argv) != 2:
+        sys.exit("usage: c4_lint_on_directory.py <directory of .drawio files>")
+    lint_drawio_files(sys.argv[1])
