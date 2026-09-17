@@ -35,6 +35,9 @@ def analyze_network(directory):
     return graph, system_names, connections
 
 if __name__ == "__main__":
+    # diagram names are often non-ASCII; do not die on a legacy console codepage
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if len(sys.argv) != 2:
         sys.exit("usage: analyze_network.py <directory of .drawio files>")
     directory_path = sys.argv[1]
