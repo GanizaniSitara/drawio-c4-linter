@@ -29,7 +29,8 @@ class XMLParseException(Exception):
     pass
 
 class C4Lint:
-    def __init__(self, xml_file, output_text_description_file=False, include_ids=False, structurizr=False, known_applications=[]):
+    def __init__(self, xml_file, output_text_description_file=False, include_ids=False,
+                 structurizr=False, known_applications=None, check_filename=False):
         logger.debug((f"Initializing C4Lint with xml_file: {xml_file}, "))
         self.errors = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
         self.warnings = {'Systems': [], 'Actors': [], 'Relationships': [], 'Other': []}
@@ -42,6 +43,7 @@ class C4Lint:
         self.root = self.parse_xml(xml_file)
         self.linted = False
         self.known_applications = self.load_known_applications(known_applications) if known_applications else []
+        self.check_filename = check_filename
         self.structurizr = structurizr
         self.lint()
 
@@ -52,16 +54,19 @@ class C4Lint:
         return known_strings
 
     def match_strings(self, input_string, known_strings):
+        """Match a system name against the known list, ignoring case.
+
+        Returns the matching known name in its own spelling, or, when there is no
+        match, up to three near misses worth looking at.
+        """
+        by_lowercase = {name.lower(): name for name in known_strings}
         input_string_lower = input_string.lower()
-        known_strings_lower = [s.lower() for s in known_strings]
 
-        # Exact match
-        if input_string_lower in known_strings_lower:
-            return [input_string]
+        if input_string_lower in by_lowercase:
+            return [by_lowercase[input_string_lower]]
 
-        # Fuzzy match
-        matches = difflib.get_close_matches(input_string_lower, known_strings_lower, n=3, cutoff=0.0)
-        return matches
+        close = difflib.get_close_matches(input_string_lower, by_lowercase, n=3, cutoff=0.6)
+        return [by_lowercase[name] for name in close]
 
     def find_parent(self, element, tree):
         for parent in tree.iter():
@@ -145,11 +150,13 @@ class C4Lint:
                     if not system_name:
                         self.errors['Systems'].append(f"ERROR: 'c4Name' property missing ---  {self.get_readable_properties(elem)}")
                         continue
-                    matches = self.match_strings(system_name, self.known_applications)
-                    if not matches:
-                        self.errors['Systems'].append(f"ERROR: '{system_name}' not found in known strings")
-                    if not system_name in matches:
-                        self.warnings['Systems'].append(f"WARN: '{system_name}' not found in known strings. Suggestions {matches}")
+                    if self.known_applications:
+                        matches = self.match_strings(system_name, self.known_applications)
+                        if not any(system_name.lower() == match.lower() for match in matches):
+                            suggestion = (f" Did you mean {', '.join(matches)}?"
+                                          if matches else "")
+                            self.warnings['Systems'].append(
+                                f"WARN: '{system_name}' is not a known application.{suggestion}")
                 elif c4_type == 'Person':
                     category = 'Actors'
                 else:
@@ -217,31 +224,70 @@ class C4Lint:
 
         self.check_c4_objects()
         self.check_all_systems_connected()
-        self.check_filename_format()
+        if self.check_filename:
+            self.check_filename_format()
         self.linted = True
         return self.errors
 
-    def to_structurizr(self):
-        elements = []
+    def to_model(self):
+        """The diagram as plain data: elements keyed by id, plus relationships between them."""
+        elements = {}
         relationships = []
         for elem in self.root.findall(".//object"):
             c4_type = elem.attrib.get("c4Type", "").strip()
+            description = elem.attrib.get("c4Description", "").replace("\n", " ").strip()
             if c4_type == "Relationship":
+                # source and target live on the mxCell inside the object, not on the object
+                mxcell = elem.find(".//mxCell")
                 relationships.append({
-                    "source": elem.attrib.get("source", ""),
-                    "target": elem.attrib.get("target", ""),
-                    "description": elem.attrib.get("c4Description", "").replace("\n", " "),
-                    "technology": elem.attrib.get("c4Technology", "")
+                    "source": mxcell.attrib.get("source", "") if mxcell is not None else "",
+                    "target": mxcell.attrib.get("target", "") if mxcell is not None else "",
+                    "description": description,
+                    "technology": elem.attrib.get("c4Technology", "").strip(),
                 })
             else:
-                elements.append({
+                elements[elem.attrib.get("id", "")] = {
                     "id": elem.attrib.get("id", ""),
-                    "name": elem.attrib.get("c4Name", ""),
-                    "description": elem.attrib.get("c4Description", "").replace("\n", " "),
+                    "name": elem.attrib.get("c4Name", "").replace("\n", " ").strip(),
+                    "description": description,
                     "type": c4_type,
-                    "technology": elem.attrib.get("c4Technology", "")
-                })
-        return json.dumps({"elements": elements, "relationships": relationships}, indent=2)
+                    "technology": elem.attrib.get("c4Technology", "").strip(),
+                }
+        return {"elements": elements, "relationships": relationships}
+
+    def to_json(self):
+        return json.dumps(self.to_model(), indent=2)
+
+    def to_structurizr(self):
+        """Render the diagram as a Structurizr DSL workspace."""
+        model = self.to_model()
+
+        def identifier(element_id, name):
+            base = re.sub(r'\W+', '', (name or element_id).title()) or 'element'
+            return base[0].lower() + base[1:]
+
+        keywords = {'Person': 'person', 'Software System': 'softwareSystem'}
+        names = {}
+        lines = ['workspace {', '', '    model {']
+        for element_id, element in model['elements'].items():
+            names[element_id] = identifier(element_id, element['name'])
+            keyword = keywords.get(element['type'], 'softwareSystem')
+            description = element['description'].replace('"', "'")
+            lines.append(f'        {names[element_id]} = {keyword} '
+                         f'"{element["name"]}" "{description}"')
+        for relationship in model['relationships']:
+            source = names.get(relationship['source'])
+            target = names.get(relationship['target'])
+            if not source or not target:
+                continue
+            description = relationship['description'].replace('"', "'")
+            technology = relationship['technology'].replace('"', "'")
+            line = f'        {source} -> {target} "{description}"'
+            if technology:
+                line += f' "{technology}"'
+            lines.append(line)
+        lines += ['    }', '}']
+        return "\n".join(lines)
 
     def check_filename_format(self):
         file = os.path.basename(self.xml_file)
@@ -250,63 +296,39 @@ class C4Lint:
             self.errors['Other'].append(f"ERROR: Filename '{self.xml_file}' does not match expected format 'C4 L<x> <system name>.drawio'")
 
 
-    def __str__(self):
+    def summary(self):
         if not self.linted:
-            return "Use .lint() on the object to perform linting."
-        def format_errors():
-            error_messages = ''
-            for category in ['Systems', 'Actors', 'Relationships', 'Other']:
-                if self.errors[category]:
-                    error_messages += f"\n\n  === {category} ===\n" + '\n'.join(
-                        f"  {error}" for error in self.errors[category])
-            return error_messages
+            self.lint()
+        return {
+            'errors': sum(len(v) for v in self.errors.values()),
+            'warnings': sum(len(v) for v in self.warnings.values()),
+            'c4_objects': self.c4_object_count,
+            'non_c4_objects': self.non_c4_object_count,
+        }
 
-        def format_warnings():
-            warning_messages = ''
-            for category in ['Systems', 'Actors', 'Relationships', 'Other']:
-                if self.errors[category]:
-                    warning_messages += f"\n\n  === {category} ===\n" + '\n'.join(
-                        f"  {warning}" for warning in self.warnings[category])
-            return warning_messages
-
-        def format_objects(objects):
-            object_messages = ''
-            for category in objects:
-                if self.errors[category] or self.warnings[category]:
-                    object_messages += f"\n\n  === {category} ===\n" + '\n'.join(
-                        f"  {object}" for o in self.objects[category])
-            return error_messages
-
-        def summary():
-            return (f"  Summary: {self.c4_object_count} C4 objects, "
-                    f"{self.non_c4_object_count} non-C4 objects found.\n")
-
-        def structurizr_output():
-            return self.to_structurizr() if self.structurizr else "Disabled"
-
-        output = (f"{60 * '#'}\n"
-                  f"C4 Linter Input: {self.xml_file}\n"
-                  f"Include IDs in errors: {'Enabled' if self.include_ids else 'Disabled'}")
-
+    def __str__(self):
         if not self.linted:
             self.lint()
 
+        lines = [60 * '#', f"C4 Linter Input: {self.xml_file}"]
+
         if not self.is_c4():
-            return f"{output}  No C4 objects found. No linting performed.\n"
+            lines.append("  No C4 objects found. No linting performed.")
+            return "\n".join(lines) + "\n"
 
-        if any(self.errors.values()) or any(self.warnings.values()) or any(self.objects.values()):
-            error_messages = format_errors()
-            warning_messages = format_warnings()
-            systems = format_objects(['Systems'])
-            objects = format_objects(['Other'])
-            return (f"{output}{error_messages}\n\n  === Summary === \n"
-                    f"{warning_messages}\n"
-                    f"{systems}\n"
-                    f"{objects}\n"
-                    f"\n\n === Summary ===\n"
-                    f"{summary()}\n\n  === Structurizr Output ===\n  {structurizr_output()}\n")
-        else:
-            return (f"{output}  No linting issues detected.\n{summary()}")
+        for category in ('Systems', 'Actors', 'Relationships', 'Other'):
+            findings = self.errors[category] + self.warnings[category]
+            if findings:
+                lines.append(f"\n  === {category} ===")
+                lines.extend(f"  {finding}" for finding in findings)
 
+        counts = self.summary()
+        lines.append("\n  === Summary ===")
+        lines.append(f"  {counts['errors']} error(s), {counts['warnings']} warning(s).")
+        lines.append(f"  {counts['c4_objects']} C4 object(s), {counts['non_c4_objects']} non-C4 object(s).")
 
+        if self.structurizr:
+            lines.append("\n  === Structurizr DSL ===")
+            lines.append(self.to_structurizr())
 
+        return "\n".join(lines) + "\n"
