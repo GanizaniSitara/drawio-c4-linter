@@ -1,0 +1,6 @@
+lxml
+pandas
+
+# analyze_network.py only
+networkx
+matplotlib

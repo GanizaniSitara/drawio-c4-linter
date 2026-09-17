@@ -163,3 +163,9 @@ cython_debug/
 *.dtmp
 *.bkp
 
+
+# Local scratch: scraped example corpus, lint run output, patches
+c4_github_examples/
+test_results/
+*.patch
+output.txt

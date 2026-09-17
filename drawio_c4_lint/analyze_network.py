@@ -1,4 +1,5 @@
 import os
+import sys
 import networkx as nx
 from drawio_c4_lint.c4_lint import C4Lint
 
@@ -34,7 +35,9 @@ def analyze_network(directory):
     return graph, system_names, connections
 
 if __name__ == "__main__":
-    directory_path = 'C:\\Solutions\\Python\\drawio_c4_lint\\c4_github_examples'  # Update this path to your specific top level directory
+    if len(sys.argv) != 2:
+        sys.exit("usage: analyze_network.py <directory of .drawio files>")
+    directory_path = sys.argv[1]
     graph, system_names, connections = analyze_network(directory_path)
     print(f"Nodes (Systems): {len(graph.nodes)}")
     print(f"Edges (Connections): {len(graph.edges)}")
